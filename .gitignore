@@ -1,0 +1,23 @@
+# Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test / build cache
+*.test
+*.out
+/vendor/
+
+# Downloaded files
+/downloads/*
+!/downloads/.gitkeep
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
