@@ -37,6 +37,7 @@ type Result struct {
 type Client struct {
 	HTTPClient *http.Client
 	Tracker    *Tracker
+	OnProgress ProgressFunc // optional live progress callback
 }
 
 // NewClient returns a Client with a sensible default timeout.
@@ -121,9 +122,24 @@ func (c *Client) Download(job Job) Result {
 		return res
 	}
 
+	var total int64
+	if resp.ContentLength > 0 {
+		total = resp.ContentLength
+	}
+
 	hasher := sha256.New()
-	writer := io.MultiWriter(f, hasher)
+	base := io.MultiWriter(f, hasher)
+	var writer io.Writer = base
+	var pw *progressWriter
+	if c.OnProgress != nil {
+		pw = newProgressWriter(base, job.URL, name, total, c.OnProgress)
+		writer = pw
+	}
+
 	n, err := io.Copy(writer, resp.Body)
+	if pw != nil {
+		pw.finish()
+	}
 	closeErr := f.Close()
 	if err != nil {
 		_ = os.Remove(filePath)

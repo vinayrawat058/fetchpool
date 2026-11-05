@@ -20,6 +20,7 @@ func main() {
 		timeout  = flag.Duration("timeout", 60*time.Second, "per-request HTTP timeout")
 		urlsFlag = flag.String("urls", "", "comma-separated list of URLs")
 		dedupe   = flag.Bool("dedupe", true, "skip duplicate URLs and identical file hashes")
+		progress = flag.Bool("progress", true, "show live download progress")
 	)
 	flag.Parse()
 
@@ -48,6 +49,13 @@ func main() {
 		client.Tracker = tracker
 	}
 
+	var ui *progressUI
+	if *progress {
+		ui = newProgressUI()
+		client.OnProgress = ui.Handler()
+		ui.Start()
+	}
+
 	fmt.Printf("Downloading %d file(s) with %d worker(s) → %s\n", len(jobs), *workers, *outDir)
 	if dupesInList > 0 {
 		fmt.Printf("Ignored %d duplicate URL(s) in the input list\n", dupesInList)
@@ -60,6 +68,9 @@ func main() {
 
 	start := time.Now()
 	results := pool.Run(jobs)
+	if ui != nil {
+		ui.Stop()
+	}
 
 	var ok, failed, skipped int
 	var totalBytes int64
@@ -81,11 +92,11 @@ func main() {
 			hashNote = fmt.Sprintf(", sha256=%s", shortHash(r.Hash))
 		}
 		fmt.Printf("OK    %s\n      → %s (%s in %s%s)\n",
-			r.URL, r.FilePath, humanBytes(r.Bytes), r.Duration.Round(time.Millisecond), hashNote)
+			r.URL, r.FilePath, downloader.FormatBytes(r.Bytes), r.Duration.Round(time.Millisecond), hashNote)
 	}
 
 	fmt.Printf("\nDone in %s — %d ok, %d skipped, %d failed, %s total\n",
-		time.Since(start).Round(time.Millisecond), ok, skipped, failed, humanBytes(totalBytes))
+		time.Since(start).Round(time.Millisecond), ok, skipped, failed, downloader.FormatBytes(totalBytes))
 
 	if failed > 0 {
 		os.Exit(1)
@@ -140,19 +151,6 @@ func shortHash(h string) string {
 		return h
 	}
 	return h[:12]
-}
-
-func humanBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for v := n / unit; v >= unit; v /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func fail(err error) {

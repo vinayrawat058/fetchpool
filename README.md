@@ -11,6 +11,7 @@ Instead of fetching links one after another, it uses a worker pool so several do
 - Saves each file under an output directory
 - Avoids overwriting existing files by appending `-1`, `-2`, etc.
 - **Duplicate detection** — skips the same URL again, and skips saving when content SHA-256 already exists
+- **Live progress** — shows active downloads with % (when known), bytes, and speed
 - Prints success / skip / failure for each URL, plus totals at the end
 
 ### Project layout
@@ -81,6 +82,7 @@ go run ./cmd/downloader -urls "https://example.com/a.png,https://example.com/b.p
 | `-workers` | `4` | Max downloads running at the same time |
 | `-timeout` | `60s` | Per-request HTTP timeout |
 | `-dedupe` | `true` | Skip duplicate URLs and identical file hashes |
+| `-progress` | `true` | Show live download progress on the terminal |
 
 ### Duplicate detection
 
