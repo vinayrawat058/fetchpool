@@ -8,19 +8,23 @@ import (
 	"strings"
 	"time"
 
+	"concurrent-downloader/internal/agent"
 	"concurrent-downloader/internal/downloader"
 	"concurrent-downloader/internal/worker"
 )
 
 func main() {
 	var (
-		urlFile  = flag.String("file", "", "path to a text file with one URL per line")
-		outDir   = flag.String("out", "downloads", "directory to save files into")
-		workers  = flag.Int("workers", 4, "max concurrent downloads")
-		timeout  = flag.Duration("timeout", 60*time.Second, "per-request HTTP timeout")
-		urlsFlag = flag.String("urls", "", "comma-separated list of URLs")
-		dedupe   = flag.Bool("dedupe", true, "skip duplicate URLs and identical file hashes")
-		progress = flag.Bool("progress", true, "show live download progress")
+		urlFile     = flag.String("file", "", "path to a text file with one URL per line")
+		outDir      = flag.String("out", "downloads", "directory to save files into")
+		workers     = flag.Int("workers", 4, "max concurrent downloads")
+		timeout     = flag.Duration("timeout", 60*time.Second, "per-request HTTP timeout")
+		urlsFlag    = flag.String("urls", "", "comma-separated list of URLs")
+		dedupe      = flag.Bool("dedupe", true, "skip duplicate URLs and identical file hashes")
+		progress    = flag.Bool("progress", true, "show live download progress")
+		agentPrompt = flag.String("agent", "", "AI agent prompt: propose download URLs from natural language")
+		agentDry    = flag.Bool("agent-dry-run", false, "only show URLs proposed by the agent; do not download")
+		agentLimit  = flag.Int("agent-limit", 5, "max URLs the agent may propose")
 	)
 	flag.Parse()
 
@@ -28,9 +32,40 @@ func main() {
 	if err != nil {
 		fail(err)
 	}
+
+	if strings.TrimSpace(*agentPrompt) != "" {
+		cfg, err := agent.FromEnv()
+		if err != nil {
+			fail(fmt.Errorf("%w\nSet OPENAI_API_KEY (optional: OPENAI_BASE_URL, OPENAI_MODEL)", err))
+		}
+		cfg.Limit = *agentLimit
+		ai := agent.New(cfg)
+
+		fmt.Printf("Agent planning downloads for: %q\n", *agentPrompt)
+		proposed, summary, err := ai.ProposeURLs(*agentPrompt)
+		if err != nil {
+			fail(err)
+		}
+		if summary != "" {
+			fmt.Printf("Agent: %s\n", summary)
+		}
+		fmt.Printf("Proposed %d URL(s):\n", len(proposed))
+		for i, u := range proposed {
+			fmt.Printf("  %d. %s\n", i+1, u)
+		}
+		if *agentDry {
+			fmt.Println("\nDry run only — nothing downloaded.")
+			return
+		}
+		// Merge agent URLs with any URLs also passed on the CLI.
+		for _, u := range proposed {
+			urls = appendUnique(urls, u)
+		}
+	}
+
 	if len(urls) == 0 {
 		fmt.Fprintf(os.Stderr, "usage: %s [flags] <url> [url...]\n", os.Args[0])
-		fmt.Fprintln(os.Stderr, "       or pass -urls / -file")
+		fmt.Fprintln(os.Stderr, "       or pass -urls / -file / -agent")
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
@@ -101,6 +136,15 @@ func main() {
 	if failed > 0 {
 		os.Exit(1)
 	}
+}
+
+func appendUnique(list []string, u string) []string {
+	for _, existing := range list {
+		if existing == u {
+			return list
+		}
+	}
+	return append(list, u)
 }
 
 func collectURLs(commaList, filePath string, args []string) ([]string, int, error) {

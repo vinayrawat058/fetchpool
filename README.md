@@ -1,6 +1,8 @@
-# Concurrent Downloader
+# Concurrent Downloader (with a simple LLM agent)
 
-A small Go CLI that downloads multiple files from the internet **at the same time**.
+A small Go CLI that downloads multiple files from the internet **at the same time**, with an optional **simple LLM agent**.
+
+You can pass URLs yourself as usual, or type a plain-English request like *“download 3 sample images”*. A large language model (LLM) proposes the URLs, then this app downloads them with the same worker pool, progress, and duplicate checks.
 
 Instead of fetching links one after another, it uses a worker pool so several downloads can run in parallel. You control how many run at once with the `-workers` flag. Finished files are saved to a local folder (by default `downloads/`).
 
@@ -12,12 +14,14 @@ Instead of fetching links one after another, it uses a worker pool so several do
 - Avoids overwriting existing files by appending `-1`, `-2`, etc.
 - **Duplicate detection** — skips the same URL again, and skips saving when content SHA-256 already exists
 - **Live progress** — shows active downloads with % (when known), bytes, and speed
+- **Simple LLM agent** — natural language → proposed URLs → download
 - Prints success / skip / failure for each URL, plus totals at the end
 
 ### Project layout
 
 ```
 cmd/downloader/          CLI entrypoint
+internal/agent/          Simple LLM download planner (-agent)
 internal/downloader/     Single-URL download logic
 internal/worker/         Concurrent worker pool
 configs/                 Sample / your own URL lists
@@ -28,6 +32,7 @@ downloads/               Where files are saved
 
 - [Go](https://go.dev/dl/) 1.21+ installed
 - Network access to the URLs you want to download
+- For `-agent` only: an OpenAI API key (details below)
 
 > **Windows note:** If you see *“Application Control policy has blocked this file”*, Smart App Control is blocking newly built unsigned programs. Turn it **Off** under  
 > **Settings → Privacy & security → Windows Security → App & browser control → Smart App Control**, then try again.
@@ -72,6 +77,44 @@ go run ./cmd/downloader https://example.com/a.png https://example.com/b.pdf
 go run ./cmd/downloader -urls "https://example.com/a.png,https://example.com/b.pdf"
 ```
 
+### 4. Simple LLM agent (natural language → URLs → download)
+
+This mode uses a simple LLM call (OpenAI-compatible chat API). The model only **plans URLs**; your Go downloader still does the real work (concurrency, progress, dedupe).
+
+#### How to get an OpenAI API key
+
+1. Go to [https://platform.openai.com](https://platform.openai.com) and sign in (or create an account).
+2. Open **API keys**: [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+3. Click **Create new secret key** and copy it (it starts with `sk-...`).
+4. Add a little **billing credit** if the account asks for it — API calls usually need that.
+5. Keep the key private. Do **not** commit it to GitHub or paste it into public chats.
+
+#### Set the key (PowerShell)
+
+```powershell
+$env:OPENAI_API_KEY = "sk-..."
+
+# optional:
+# $env:OPENAI_MODEL = "gpt-4o-mini"
+# $env:OPENAI_BASE_URL = "https://api.openai.com/v1"
+```
+
+`OPENAI_BASE_URL` lets you use other OpenAI-compatible providers if you want.
+
+#### Run the agent
+
+Dry-run (plan only — shows URLs, does not download):
+
+```powershell
+go run ./cmd/downloader -agent "download 3 small sample images" -agent-dry-run
+```
+
+Plan + download:
+
+```powershell
+go run ./cmd/downloader -agent "download 2 sample PDFs" -agent-limit 2
+```
+
 ## Useful flags
 
 | Flag | Default | Meaning |
@@ -83,6 +126,9 @@ go run ./cmd/downloader -urls "https://example.com/a.png,https://example.com/b.p
 | `-timeout` | `60s` | Per-request HTTP timeout |
 | `-dedupe` | `true` | Skip duplicate URLs and identical file hashes |
 | `-progress` | `true` | Show live download progress on the terminal |
+| `-agent` | _(empty)_ | Natural-language prompt for the simple LLM planner |
+| `-agent-dry-run` | `false` | Show proposed URLs only; do not download |
+| `-agent-limit` | `5` | Max URLs the agent may propose |
 
 ### Duplicate detection
 

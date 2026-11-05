@@ -15,6 +15,10 @@
 /downloads/*
 !/downloads/.gitkeep
 
+# Secrets / env
+.env
+.env.*
+
 # IDE / OS
 .idea/
 .vscode/
