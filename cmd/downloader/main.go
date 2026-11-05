@@ -25,8 +25,14 @@ func main() {
 		agentPrompt = flag.String("agent", "", "AI agent prompt: propose download URLs from natural language")
 		agentDry    = flag.Bool("agent-dry-run", false, "only show URLs proposed by the agent; do not download")
 		agentLimit  = flag.Int("agent-limit", 5, "max URLs the agent may propose")
+		maxSize     = flag.String("max-size", "0", "skip files larger than this (e.g. 5MB, 500KB); 0 = unlimited")
 	)
 	flag.Parse()
+
+	maxBytes, err := downloader.ParseSize(*maxSize)
+	if err != nil {
+		fail(err)
+	}
 
 	urls, dupesInList, err := collectURLs(*urlsFlag, *urlFile, flag.Args())
 	if err != nil {
@@ -76,6 +82,7 @@ func main() {
 	}
 
 	client := downloader.NewClient(*timeout)
+	client.MaxBytes = maxBytes
 	if *dedupe {
 		tracker, err := downloader.LoadTracker(*outDir)
 		if err != nil {
@@ -92,6 +99,9 @@ func main() {
 	}
 
 	fmt.Printf("Downloading %d file(s) with %d worker(s) → %s\n", len(jobs), *workers, *outDir)
+	if maxBytes > 0 {
+		fmt.Printf("Max file size: %s\n", downloader.FormatBytes(maxBytes))
+	}
 	if dupesInList > 0 {
 		fmt.Printf("Ignored %d duplicate URL(s) in the input list\n", dupesInList)
 	}

@@ -15,6 +15,7 @@ Instead of fetching links one after another, it uses a worker pool so several do
 - **Duplicate detection** — skips the same URL again, and skips saving when content SHA-256 already exists
 - **Live progress** — shows active downloads with % (when known), bytes, and speed
 - **Simple LLM agent** — natural language → proposed URLs → download
+- **Max file size** — skip downloads larger than a limit (e.g. `-max-size 5MB`)
 - Prints success / skip / failure for each URL, plus totals at the end
 
 ### Project layout
@@ -129,6 +130,12 @@ go run ./cmd/downloader -agent "download 2 sample PDFs" -agent-limit 2
 | `-agent` | _(empty)_ | Natural-language prompt for the simple LLM planner |
 | `-agent-dry-run` | `false` | Show proposed URLs only; do not download |
 | `-agent-limit` | `5` | Max URLs the agent may propose |
+| `-max-size` | `0` | Skip files larger than this (`5MB`, `500KB`, bytes); `0` = unlimited |
+
+```powershell
+# Skip anything larger than 1 MB
+go run ./cmd/downloader -max-size 1MB -file configs/urls.example.txt
+```
 
 ### Duplicate detection
 

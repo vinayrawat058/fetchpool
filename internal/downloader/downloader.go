@@ -38,6 +38,7 @@ type Client struct {
 	HTTPClient *http.Client
 	Tracker    *Tracker
 	OnProgress ProgressFunc // optional live progress callback
+	MaxBytes   int64        // 0 = unlimited; reject files larger than this
 }
 
 // NewClient returns a Client with a sensible default timeout.
@@ -102,6 +103,18 @@ func (c *Client) Download(job Job) Result {
 		return res
 	}
 
+	var total int64
+	if resp.ContentLength > 0 {
+		total = resp.ContentLength
+	}
+	if c.MaxBytes > 0 && total > c.MaxBytes {
+		c.releaseURL(job.URL)
+		res.Skipped = true
+		res.SkipReason = fmt.Sprintf("exceeds max size (%s > %s)", FormatBytes(total), FormatBytes(c.MaxBytes))
+		res.Duration = time.Since(start)
+		return res
+	}
+
 	name := job.FileName
 	if name == "" {
 		name = fileNameFromURL(job.URL)
@@ -122,11 +135,6 @@ func (c *Client) Download(job Job) Result {
 		return res
 	}
 
-	var total int64
-	if resp.ContentLength > 0 {
-		total = resp.ContentLength
-	}
-
 	hasher := sha256.New()
 	base := io.MultiWriter(f, hasher)
 	var writer io.Writer = base
@@ -136,7 +144,13 @@ func (c *Client) Download(job Job) Result {
 		writer = pw
 	}
 
-	n, err := io.Copy(writer, resp.Body)
+	src := io.Reader(resp.Body)
+	if c.MaxBytes > 0 {
+		// Read at most MaxBytes+1 so we can detect oversized bodies without Content-Length.
+		src = io.LimitReader(resp.Body, c.MaxBytes+1)
+	}
+
+	n, err := io.Copy(writer, src)
 	if pw != nil {
 		pw.finish()
 	}
@@ -145,6 +159,15 @@ func (c *Client) Download(job Job) Result {
 		_ = os.Remove(filePath)
 		c.releaseURL(job.URL)
 		res.Err = fmt.Errorf("write file: %w", err)
+		res.Duration = time.Since(start)
+		return res
+	}
+	if c.MaxBytes > 0 && n > c.MaxBytes {
+		_ = os.Remove(filePath)
+		c.releaseURL(job.URL)
+		res.Skipped = true
+		res.SkipReason = fmt.Sprintf("exceeds max size (>%s)", FormatBytes(c.MaxBytes))
+		res.Bytes = 0
 		res.Duration = time.Since(start)
 		return res
 	}
